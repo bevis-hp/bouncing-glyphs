@@ -76,12 +76,6 @@ Usage of bouncing-glyphs:
 
 ## Development
 
-Record the demo GIF (requires [vhs](https://github.com/charmbracelet/vhs)):
-
-```bash
-vhs demo/demo.tape
-```
-
 Build:
 
 ```bash
