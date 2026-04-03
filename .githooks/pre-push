@@ -3,6 +3,12 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 readme="$repo_root/README.md"
+license_file="$repo_root/LICENSE"
+
+if [[ ! -f "$license_file" ]]; then
+  echo "LICENSE file is missing. Restore it before pushing." >&2
+  exit 1
+fi
 
 before_hash=""
 if [[ -f "$readme" ]]; then
