@@ -1,6 +1,6 @@
 .DS_Store
 
 # Local build outputs
-/bouncing-balls
+/bouncing-glyphs
 *.test
 *.out

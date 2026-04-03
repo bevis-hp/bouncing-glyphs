@@ -1,4 +1,4 @@
-module bouncing-balls
+module bouncing-glyphs
 
 go 1.26.1
 

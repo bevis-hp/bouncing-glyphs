@@ -1,14 +1,14 @@
 package main
 
 import (
-	"bouncing-balls/simulation"
+	"bouncing-glyphs/simulation"
 	"flag"
 	"fmt"
 	"os"
 )
 
 func main() {
-	count := flag.Int("count", 10, "number of balls to simulate")
+	count := flag.Int("count", 10, "number of glyphs to simulate")
 	fps := flag.Int("fps", 60, "frames per second")
 	flag.Parse()
 
