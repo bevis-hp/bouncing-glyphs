@@ -7,10 +7,10 @@ Terminal glyph physics toy built with Go, Bubble Tea, and bouncing mechanics.
 ## Features
 
 - Fixed-timestep terminal animation loop
-- Gravity + restitution floor bounces
+- Gravity + Coefficient of Restitution + Floor Friction
 - Spring-following horizontal drift for smooth lateral motion
-- Random glyph characters and colors
-- Interactive controls to spawn more glyphs and quit cleanly
+- Random glyph characters and colours
+- Interactive controls to spawn more glyphs
 
 ## Requirements
 
