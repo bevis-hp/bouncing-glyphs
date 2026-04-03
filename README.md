@@ -1,12 +1,13 @@
 # Bouncing Glyphs
 
-Terminal glyph physics toy built with Go, Bubble Tea, and bouncing mechanics.
+Terminal physics toy of bouncing glyphs built with Go and Bubble Tea.
 
 ![Demo](demo/demo.gif)
 
 ## Features
 
 - Fixed-timestep terminal animation loop
+- Responsive to resizing of terminal
 - Gravity + Coefficient of Restitution + Floor Friction
 - Spring-following horizontal drift for smooth lateral motion
 - Random glyph characters and colours
