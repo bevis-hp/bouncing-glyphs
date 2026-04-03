@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bouncing-glyphs/simulation"
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/bevis-hp/bouncing-glyphs/simulation"
 )
 
 func main() {
