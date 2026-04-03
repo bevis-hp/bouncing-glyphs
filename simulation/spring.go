@@ -8,8 +8,8 @@ import (
 var epsilon = math.Nextafter(1, 2) - 1
 
 // FPS returns the delta time for a fixed frames-per-second rate.
-func FPS(n int) float64 {
-	return (time.Second / time.Duration(n)).Seconds()
+func FPS(framesPerSecond int) float64 {
+	return (time.Second / time.Duration(framesPerSecond)).Seconds()
 }
 
 // Spring caches coefficients for a damped harmonic oscillator.
@@ -33,24 +33,24 @@ func NewSpring(deltaTime, angularFrequency, dampingRatio float64) (spring Spring
 	}
 
 	if dampingRatio > 1.0+epsilon {
-		za := -angularFrequency * dampingRatio
-		zb := angularFrequency * math.Sqrt(dampingRatio*dampingRatio-1.0)
-		z1 := za - zb
-		z2 := za + zb
+		baseDecay := -angularFrequency * dampingRatio
+		dampingOffset := angularFrequency * math.Sqrt(dampingRatio*dampingRatio-1.0)
+		decayRoot1 := baseDecay - dampingOffset
+		decayRoot2 := baseDecay + dampingOffset
 
-		e1 := math.Exp(z1 * deltaTime)
-		e2 := math.Exp(z2 * deltaTime)
+		exp1 := math.Exp(decayRoot1 * deltaTime)
+		exp2 := math.Exp(decayRoot2 * deltaTime)
 
-		invTwoZb := 1.0 / (2.0 * zb)
-		e1OverTwoZb := e1 * invTwoZb
-		e2OverTwoZb := e2 * invTwoZb
-		z1e1OverTwoZb := z1 * e1OverTwoZb
-		z2e2OverTwoZb := z2 * e2OverTwoZb
+		inverseDoubleOffset := 1.0 / (2.0 * dampingOffset)
+		exp1OverDoubleOffset := exp1 * inverseDoubleOffset
+		exp2OverDoubleOffset := exp2 * inverseDoubleOffset
+		decayRoot1Exp1OverDoubleOffset := decayRoot1 * exp1OverDoubleOffset
+		decayRoot2Exp2OverDoubleOffset := decayRoot2 * exp2OverDoubleOffset
 
-		spring.posPosCoef = e1OverTwoZb*z2 - z2e2OverTwoZb + e2
-		spring.posVelCoef = -e1OverTwoZb + e2OverTwoZb
-		spring.velPosCoef = (z1e1OverTwoZb - z2e2OverTwoZb + e2) * z2
-		spring.velVelCoef = -z1e1OverTwoZb + z2e2OverTwoZb
+		spring.posPosCoef = exp1OverDoubleOffset*decayRoot2 - decayRoot2Exp2OverDoubleOffset + exp2
+		spring.posVelCoef = -exp1OverDoubleOffset + exp2OverDoubleOffset
+		spring.velPosCoef = (decayRoot1Exp1OverDoubleOffset - decayRoot2Exp2OverDoubleOffset + exp2) * decayRoot2
+		spring.velVelCoef = -decayRoot1Exp1OverDoubleOffset + decayRoot2Exp2OverDoubleOffset
 	} else if dampingRatio < 1.0-epsilon {
 		omegaZeta := angularFrequency * dampingRatio
 		alpha := angularFrequency * math.Sqrt(1.0-dampingRatio*dampingRatio)

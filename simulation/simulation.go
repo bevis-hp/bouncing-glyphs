@@ -49,14 +49,14 @@ func DefaultPhysicsConfig() PhysicsConfig {
 // The Y axis uses direct Euler integration so gravity and floor bounces are
 // lag-free and land exactly on the floor row.
 type Glyph struct {
-	x, y     float64 // displayed position
-	vx       float64 // spring internal velocity (x axis)
-	vy       float64 // physics velocity (y axis, cells/frame)
-	targetX  float64 // spring equilibrium point (x only)
-	targetVX float64 // wandering velocity of the x target
-	stillFor float64 // seconds spent at rest (for despawn)
-	char     rune    // display character
-	ansi     string  // pre-computed colored cell string
+	x, y       float64 // displayed position
+	xVel       float64 // spring internal velocity (x axis)
+	yVel       float64 // physics velocity (y axis, cells/frame)
+	targetX    float64 // spring equilibrium point (x only)
+	targetXVel float64 // wandering velocity of the x target
+	stillFor   float64 // seconds spent at rest (for despawn)
+	char       rune    // display character
+	ansi       string  // pre-computed colored cell string
 }
 
 // Simulation manages the bouncing glyphs.
@@ -74,6 +74,7 @@ type Simulation struct {
 
 type frameMsg time.Time
 
+// These are sampled once per glyph so every instance keeps a stable appearance.
 var glyphChars = []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{}|;:'\",.<>/?~£€¢¥§±×÷¶©®™✓✕★☆◆◇●○■□▲△✦✧✩✪✫✬✭✮✯✰✶✷")
 var glyphColors = []lipgloss.Color{
 	"#DC3C3C",
@@ -102,15 +103,17 @@ func NewWithPhysicsConfig(count, fps int, physics PhysicsConfig) *Simulation {
 	if fps < 1 {
 		fps = 1
 	}
+	// The spring is precomputed once because its coefficients only depend on the
+	// frame step and configured damping values.
 	deltaTime := FPS(fps)
 	spring := NewSpring(deltaTime, physics.SpringFrequency, physics.SpringDampingRatio)
 	glyphs := make([]*Glyph, count)
 	for i := range glyphs {
-		c := glyphColors[rng.Intn(len(glyphColors))]
-		ch := glyphChars[rng.Intn(len(glyphChars))]
+		color := glyphColors[rng.Intn(len(glyphColors))]
+		char := glyphChars[rng.Intn(len(glyphChars))]
 		glyphs[i] = &Glyph{
-			char: ch,
-			ansi: lipgloss.NewStyle().Foreground(c).Render(string(ch)),
+			char: char,
+			ansi: lipgloss.NewStyle().Foreground(color).Render(string(char)),
 		}
 	}
 	return &Simulation{
@@ -124,137 +127,142 @@ func NewWithPhysicsConfig(count, fps int, physics PhysicsConfig) *Simulation {
 }
 
 // placeGlyphs launches all glyphs from the top of the screen.
-func (s *Simulation) placeGlyphs() {
-	for _, g := range s.glyphs {
-		startX := s.rng.Float64() * float64(s.width-1)
-		g.x = startX
-		g.y = 0
-		g.vx = 0
-		g.vy = -(s.rng.Float64() * s.physics.LaunchKickMax)
-		g.targetX = startX
-		g.targetVX = (s.rng.Float64()*2 - 1) * s.physics.TargetDriftMax
-		g.stillFor = 0
+func (sim *Simulation) placeGlyphs() {
+	for _, glyph := range sim.glyphs {
+		startX := sim.rng.Float64() * float64(sim.width-1)
+		// Start each glyph at the top edge, then give it a small upward kick so it
+		// immediately falls back into the playfield under gravity.
+		glyph.x = startX
+		glyph.y = 0
+		glyph.xVel = 0
+		glyph.yVel = -(sim.rng.Float64() * sim.physics.LaunchKickMax)
+		glyph.targetX = startX
+		glyph.targetXVel = (sim.rng.Float64()*2 - 1) * sim.physics.TargetDriftMax
+		glyph.stillFor = 0
 	}
 }
 
 // spawnGlyph adds a new glyph at a random x position at the top of the screen.
-func (s *Simulation) spawnGlyph() {
-	if s.width < 1 {
+func (sim *Simulation) spawnGlyph() {
+	if sim.width < 1 {
 		return
 	}
-	c := glyphColors[s.rng.Intn(len(glyphColors))]
-	ch := glyphChars[s.rng.Intn(len(glyphChars))]
-	x := s.rng.Float64() * float64(s.width-1)
-	g := &Glyph{
-		x:        x,
-		y:        0,
-		vy:       -(s.rng.Float64() * s.physics.SpawnKickMax),
-		targetX:  x,
-		targetVX: (s.rng.Float64()*2 - 1) * s.physics.TargetDriftMax,
-		char:     ch,
-		ansi:     lipgloss.NewStyle().Foreground(c).Render(string(ch)),
+	color := glyphColors[sim.rng.Intn(len(glyphColors))]
+	char := glyphChars[sim.rng.Intn(len(glyphChars))]
+	x := sim.rng.Float64() * float64(sim.width-1)
+	glyph := &Glyph{
+		x:          x,
+		y:          0,
+		yVel:       -(sim.rng.Float64() * sim.physics.SpawnKickMax),
+		targetX:    x,
+		targetXVel: (sim.rng.Float64()*2 - 1) * sim.physics.TargetDriftMax,
+		char:       char,
+		ansi:       lipgloss.NewStyle().Foreground(color).Render(string(char)),
 	}
-	s.glyphs = append(s.glyphs, g)
+	sim.glyphs = append(sim.glyphs, glyph)
 }
 
-func (s *Simulation) animate() tea.Cmd {
-	return tea.Tick(s.frameDuration, func(t time.Time) tea.Msg {
-		return frameMsg(t)
+func (sim *Simulation) animate() tea.Cmd {
+	// Bubble Tea drives the simulation by scheduling the next fixed-timestep tick.
+	return tea.Tick(sim.frameDuration, func(tickTime time.Time) tea.Msg {
+		return frameMsg(tickTime)
 	})
 }
 
 // Run starts the Bubble Tea simulation.
-func (s *Simulation) Run() {
-	p := tea.NewProgram(s, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
+func (sim *Simulation) Run() {
+	program := tea.NewProgram(sim, tea.WithAltScreen())
+	if _, err := program.Run(); err != nil {
 		fmt.Printf("error running simulation: %v\n", err)
 	}
 }
 
 // Init requests the first animation frame.
-func (s *Simulation) Init() tea.Cmd {
-	return s.animate()
+func (sim *Simulation) Init() tea.Cmd {
+	return sim.animate()
 }
 
 // Update advances simulation state on frame ticks and handles quit keys.
-func (s *Simulation) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (sim *Simulation) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
-			return s, tea.Quit
+			return sim, tea.Quit
 		case " ":
-			s.spawnGlyph()
+			sim.spawnGlyph()
 		}
 	case tea.WindowSizeMsg:
 		if msg.Width > 0 {
-			s.width = msg.Width
+			sim.width = msg.Width
 		}
 		if msg.Height > 0 {
-			s.height = msg.Height
+			sim.height = msg.Height
 		}
-		s.spaces = strings.Repeat(" ", s.width)
-		if !s.ready && s.width > 0 && s.height > 0 {
-			s.placeGlyphs()
-			s.ready = true
+		// Cache a full row of spaces once per resize so View can slice it cheaply.
+		sim.spaces = strings.Repeat(" ", sim.width)
+		if !sim.ready && sim.width > 0 && sim.height > 0 {
+			// Delay initial placement until we know the terminal size.
+			sim.placeGlyphs()
+			sim.ready = true
 		}
 	case frameMsg:
-		s.update()
-		return s, s.animate()
+		// Advance one simulation step, then immediately schedule the next one.
+		sim.update()
+		return sim, sim.animate()
 	}
 
-	return s, nil
+	return sim, nil
 }
 
-func (s *Simulation) update() {
-	dt := s.frameDuration.Seconds()
-	floor := float64(s.height - 2) // last playfield row (height-1 is the footer)
+func (sim *Simulation) update() {
+	frameSeconds := sim.frameDuration.Seconds()
+	floor := float64(sim.height - 2) // last playfield row (height-1 is the footer)
 
-	surviving := s.glyphs[:0]
-	for _, g := range s.glyphs {
-		// Y axis: direct Euler integration — no spring lag, bounces land exactly
-		// on the floor row.
-		g.vy += s.physics.Gravity
-		g.y += g.vy
+	surviving := sim.glyphs[:0]
+	for _, glyph := range sim.glyphs {
+		// Y axis: direct Euler integration — no spring lag, bounces land exactly on the floor row.
+		glyph.yVel += sim.physics.Gravity
+		glyph.y += glyph.yVel
 
-		if g.y < 0 {
-			g.y = 0
-			g.vy = math.Abs(g.vy) // bounce off ceiling, ensure downward
+		if glyph.y < 0 {
+			glyph.y = 0
+			glyph.yVel = math.Abs(glyph.yVel) // bounce off ceiling, ensure downward
 		}
-		if g.y >= floor {
-			g.y = floor
-			g.vy = -g.vy * s.physics.Restitution
-			g.targetVX *= s.physics.XFloorFriction // bleed off horizontal wander on bounce
+		if glyph.y >= floor {
+			glyph.y = floor
+			glyph.yVel = -glyph.yVel * sim.physics.Restitution
+			glyph.targetXVel *= sim.physics.XFloorFriction // bleed off horizontal wander on bounce
 		}
 
 		// X axis: spring follower tracking a wandering target.
-		g.targetX += g.targetVX
-		if g.targetX < 0 {
-			g.targetX = 0
-			g.targetVX = -g.targetVX
-		} else if g.targetX >= float64(s.width-1) {
-			g.targetX = float64(s.width - 1)
-			g.targetVX = -g.targetVX
+		glyph.targetX += glyph.targetXVel
+		if glyph.targetX < 0 {
+			glyph.targetX = 0
+			glyph.targetXVel = -glyph.targetXVel
+		} else if glyph.targetX >= float64(sim.width-1) {
+			glyph.targetX = float64(sim.width - 1)
+			glyph.targetXVel = -glyph.targetXVel
 		}
-		g.x, g.vx = s.spring.Update(g.x, g.vx, g.targetX)
+		glyph.x, glyph.xVel = sim.spring.Update(glyph.x, glyph.xVel, glyph.targetX)
 
 		// Accumulate rest time; despawn after restTimeout seconds.
-		if math.Abs(g.vy) < s.physics.RestThreshold && g.y >= floor-0.5 {
-			g.stillFor += dt
+		if math.Abs(glyph.yVel) < sim.physics.RestThreshold && glyph.y >= floor-0.5 {
+			glyph.stillFor += frameSeconds
 		} else {
-			g.stillFor = 0
+			glyph.stillFor = 0
 		}
-		if g.stillFor < s.physics.RestTimeoutSeconds {
-			surviving = append(surviving, g)
+		if glyph.stillFor < sim.physics.RestTimeoutSeconds {
+			surviving = append(surviving, glyph)
 		}
 	}
-	if s.physics.EnableCollision && len(surviving) > 1 {
-		s.resolveCollisions(surviving, floor)
+	if sim.physics.EnableCollision && len(surviving) > 1 {
+		sim.resolveCollisions(surviving, floor)
 	}
-	s.glyphs = surviving
+	sim.glyphs = surviving
 }
 
-func (s *Simulation) resolveCollisions(glyphs []*Glyph, floor float64) {
+func (sim *Simulation) resolveCollisions(glyphs []*Glyph, floor float64) {
 	const minDistance = 1.0
 	const minDistanceSq = minDistance * minDistance
 	const collisionRestitutionScale = 0.25
@@ -268,80 +276,90 @@ func (s *Simulation) resolveCollisions(glyphs []*Glyph, floor float64) {
 		y int
 	}
 
+	// Bucket glyphs into integer grid cells so each glyph only checks nearby
+	// neighbors instead of every other glyph on screen.
 	buckets := make(map[cell][]int, len(glyphs))
-	for i, g := range glyphs {
-		cx := int(math.Floor(g.x))
-		cy := int(math.Floor(g.y))
+	for i, glyph := range glyphs {
+		cellX := int(math.Floor(glyph.x))
+		cellY := int(math.Floor(glyph.y))
 
 		for dy := -1; dy <= 1; dy++ {
 			for dx := -1; dx <= 1; dx++ {
-				key := cell{x: cx + dx, y: cy + dy}
+				key := cell{x: cellX + dx, y: cellY + dy}
 				for _, j := range buckets[key] {
-					o := glyphs[j]
-					deltaX := g.x - o.x
-					deltaY := g.y - o.y
+					otherGlyph := glyphs[j]
+					deltaX := glyph.x - otherGlyph.x
+					deltaY := glyph.y - otherGlyph.y
+					// Use squared distance first to avoid an unnecessary sqrt for most pairs.
 					distSq := deltaX*deltaX + deltaY*deltaY
 					if distSq <= 0 || distSq >= minDistanceSq {
 						continue
 					}
 
 					dist := math.Sqrt(distSq)
-					nx := deltaX / dist
-					ny := deltaY / dist
+					normalX := deltaX / dist
+					normalY := deltaY / dist
 
-					relVx := g.vx - o.vx
-					relVy := g.vy - o.vy
-					velAlongNormal := relVx*nx + relVy*ny
+					relXVel := glyph.xVel - otherGlyph.xVel
+					relYVel := glyph.yVel - otherGlyph.yVel
+					velAlongNormal := relXVel*normalX + relYVel*normalY
+					// Only apply an impulse when the pair is moving toward each other.
 					if velAlongNormal < minApproachSpeed {
-						e := math.Min(1, math.Max(0, s.physics.Restitution*collisionRestitutionScale))
-						impulse := -(1 + e) * velAlongNormal / 2
+						effectiveRestitution := math.Min(1, math.Max(0, sim.physics.Restitution*collisionRestitutionScale))
+						impulse := -(1 + effectiveRestitution) * velAlongNormal / 2
 						if impulse > maxCollisionImpulse {
 							impulse = maxCollisionImpulse
 						}
-						ix := impulse * nx
-						iy := impulse * ny
-						g.vx += ix
-						g.vy += iy
-						o.vx -= ix
-						o.vy -= iy
+						impulseX := impulse * normalX
+						impulseY := impulse * normalY
+						glyph.xVel += impulseX
+						glyph.yVel += impulseY
+						otherGlyph.xVel -= impulseX
+						otherGlyph.yVel -= impulseY
 					}
 
+					// Push overlapping glyphs apart even if their closing speed is tiny.
 					separation := math.Max(minDistance-dist-separationSlop, 0) * separationPercent / 2
-					g.x += nx * separation
-					g.y += ny * separation
-					o.x -= nx * separation
-					o.y -= ny * separation
+					glyph.x += normalX * separation
+					glyph.y += normalY * separation
+					otherGlyph.x -= normalX * separation
+					otherGlyph.y -= normalY * separation
 
-					if g.x < 0 {
-						g.x = 0
+					// Re-clamp after separation so collision resolution cannot push glyphs
+					// outside the playable area.
+					if glyph.x < 0 {
+						glyph.x = 0
 					}
-					if g.x > float64(s.width-1) {
-						g.x = float64(s.width - 1)
+					if glyph.x > float64(sim.width-1) {
+						glyph.x = float64(sim.width - 1)
 					}
-					if o.x < 0 {
-						o.x = 0
+					if otherGlyph.x < 0 {
+						otherGlyph.x = 0
 					}
-					if o.x > float64(s.width-1) {
-						o.x = float64(s.width - 1)
+					if otherGlyph.x > float64(sim.width-1) {
+						otherGlyph.x = float64(sim.width - 1)
 					}
 
-					if g.y < 0 {
-						g.y = 0
+					// Clamp vertically too, since separation can push glyphs above the
+					// ceiling or slightly below the resolved floor.
+					if glyph.y < 0 {
+						glyph.y = 0
 					}
-					if g.y > floor {
-						g.y = floor
+					if glyph.y > floor {
+						glyph.y = floor
 					}
-					if o.y < 0 {
-						o.y = 0
+					if otherGlyph.y < 0 {
+						otherGlyph.y = 0
 					}
-					if o.y > floor {
-						o.y = floor
+					if otherGlyph.y > floor {
+						otherGlyph.y = floor
 					}
 				}
 			}
 		}
 
-		buckets[cell{x: cx, y: cy}] = append(buckets[cell{x: cx, y: cy}], i)
+		// Register this glyph after processing neighbors so each pair is resolved once.
+		buckets[cell{x: cellX, y: cellY}] = append(buckets[cell{x: cellX, y: cellY}], i)
 	}
 }
 
@@ -351,20 +369,22 @@ type placed struct {
 	content  string
 }
 
-func (s *Simulation) View() string {
-	if s.width < 1 || s.height < 1 {
+func (sim *Simulation) View() string {
+	if sim.width < 1 || sim.height < 1 {
 		return ""
 	}
 
 	// Collect glyph positions (exclude footer row so the hint is always visible).
-	positions := make([]placed, 0, len(s.glyphs))
-	for _, g := range s.glyphs {
-		col := int(math.Round(g.x))
-		row := int(math.Round(g.y))
-		if row >= 0 && row < s.height-1 && col >= 0 && col < s.width {
-			positions = append(positions, placed{row, col, g.ansi})
+	positions := make([]placed, 0, len(sim.glyphs))
+	for _, glyph := range sim.glyphs {
+		col := int(math.Round(glyph.x))
+		row := int(math.Round(glyph.y))
+		// The footer owns the last terminal row, so skip any glyph that would land there.
+		if row >= 0 && row < sim.height-1 && col >= 0 && col < sim.width {
+			positions = append(positions, placed{row, col, glyph.ansi})
 		}
 	}
+	// Sort once so rendering can stream rows left-to-right without random access.
 	sort.Slice(positions, func(i, j int) bool {
 		if positions[i].row != positions[j].row {
 			return positions[i].row < positions[j].row
@@ -372,40 +392,42 @@ func (s *Simulation) View() string {
 		return positions[i].col < positions[j].col
 	})
 
+	// out accumulates the full terminal frame before returning it to Bubble Tea.
+	// Pre-growing it avoids repeated reallocations while rows are appended.
 	var out strings.Builder
-	out.Grow(s.height * (s.width + 1))
+	out.Grow(sim.height * (sim.width + 1))
 
-	pi := 0
-	for row := 0; row < s.height; row++ {
-		if row == s.height-1 {
+	positionIndex := 0
+	for row := 0; row < sim.height; row++ {
+		if row == sim.height-1 {
 			// Footer row: fixed hint text, padded to full width.
 			const footer = "(Space: add glyph · q/esc/ctrl+c: quit)"
-			if len(footer) <= s.width {
+			if len(footer) <= sim.width {
 				out.WriteString(footer)
-				out.WriteString(s.spaces[:s.width-len(footer)])
+				out.WriteString(sim.spaces[:sim.width-len(footer)])
 			} else {
-				out.WriteString(footer[:s.width])
+				out.WriteString(footer[:sim.width])
 			}
 			break
 		}
 
 		// Write spaces and glyphs for this row using a left-to-right cursor.
 		col := 0
-		for pi < len(positions) && positions[pi].row == row {
-			p := positions[pi]
-			pi++
-			if p.col < col {
+		for positionIndex < len(positions) && positions[positionIndex].row == row {
+			position := positions[positionIndex]
+			positionIndex++
+			if position.col < col {
 				continue // two glyphs in the same cell; skip the later one
 			}
-			if p.col > col {
-				out.WriteString(s.spaces[:p.col-col])
+			if position.col > col {
+				out.WriteString(sim.spaces[:position.col-col])
 			}
-			out.WriteString(p.content)
-			col = p.col + 1
+			out.WriteString(position.content)
+			col = position.col + 1
 		}
 		// Pad remainder of row with spaces.
-		if col < s.width {
-			out.WriteString(s.spaces[:s.width-col])
+		if col < sim.width {
+			out.WriteString(sim.spaces[:sim.width-col])
 		}
 		out.WriteByte('\n')
 	}
