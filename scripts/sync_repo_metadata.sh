@@ -19,8 +19,14 @@ if [[ -z "$origin_url" ]]; then
 fi
 
 slug=""
-if [[ "$origin_url" =~ github.com[:/]([^/]+)/([^/.]+)(\\.git)?$ ]]; then
-  slug="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+clean_url="$origin_url"
+clean_url="${clean_url#git@github.com:}"
+clean_url="${clean_url#https://github.com/}"
+clean_url="${clean_url#http://github.com/}"
+clean_url="${clean_url%.git}"
+
+if [[ "$clean_url" == */* ]]; then
+  slug="$clean_url"
 fi
 
 if [[ -z "$slug" ]]; then
