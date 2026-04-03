@@ -12,14 +12,35 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Physics constants for the energy-loss/gravity system.
-const (
-	gravity        = 0.008 // cells/frame² downward acceleration (tuned for default 60 fps)
-	restitution    = 0.75  // fraction of speed retained on floor bounce
-	xFloorFriction = 0.96  // fraction of horizontal speed retained on floor bounce
-	restThreshold  = 0.08  // cells/frame speed below which a glyph is considered at rest
-	restTimeout    = 5.0   // seconds at rest before despawn
-)
+// PhysicsConfig controls spring tuning and y-axis bounce behavior.
+type PhysicsConfig struct {
+	Gravity            float64 // cells/frame² downward acceleration
+	Restitution        float64 // fraction of speed retained on floor bounce
+	XFloorFriction     float64 // fraction of target x velocity retained on floor bounce
+	RestThreshold      float64 // cells/frame speed below which a glyph is considered at rest
+	RestTimeoutSeconds float64 // seconds at rest before despawn
+	SpringFrequency    float64 // spring angular frequency for x-axis follow behavior
+	SpringDampingRatio float64 // spring damping ratio for x-axis follow behavior
+	LaunchKickMax      float64 // max upward launch speed magnitude for initial glyphs
+	SpawnKickMax       float64 // max upward launch speed magnitude for spawned glyphs
+	TargetDriftMax     float64 // max absolute x target drift speed
+}
+
+// DefaultPhysicsConfig returns the baseline motion tuning.
+func DefaultPhysicsConfig() PhysicsConfig {
+	return PhysicsConfig{
+		Gravity:            0.008,
+		Restitution:        0.75,
+		XFloorFriction:     0.96,
+		RestThreshold:      0.08,
+		RestTimeoutSeconds: 5.0,
+		SpringFrequency:    5.0,
+		SpringDampingRatio: 0.55,
+		LaunchKickMax:      0.6,
+		SpawnKickMax:       1.0,
+		TargetDriftMax:     0.7,
+	}
+}
 
 // Glyph represents a glyph in the simulation.
 // The X axis uses a spring follower for a drifting, slightly-lagged feel.
@@ -43,6 +64,7 @@ type Simulation struct {
 	glyphs        []*Glyph
 	count         int
 	rng           *rand.Rand
+	physics       PhysicsConfig
 	spring        Spring
 	frameDuration time.Duration
 	spaces        string // s.width spaces, rebuilt on resize
@@ -69,12 +91,17 @@ var glyphColors = []lipgloss.Color{
 // New creates a new Simulation. Width and height are determined from the
 // terminal on the first WindowSizeMsg.
 func New(count, fps int) *Simulation {
+	return NewWithPhysicsConfig(count, fps, DefaultPhysicsConfig())
+}
+
+// NewWithPhysicsConfig creates a new Simulation using caller-provided physics tuning.
+func NewWithPhysicsConfig(count, fps int, physics PhysicsConfig) *Simulation {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	if fps < 1 {
 		fps = 1
 	}
 	deltaTime := FPS(fps)
-	spring := NewSpring(deltaTime, 5.0, 0.55)
+	spring := NewSpring(deltaTime, physics.SpringFrequency, physics.SpringDampingRatio)
 	glyphs := make([]*Glyph, count)
 	for i := range glyphs {
 		c := glyphColors[rng.Intn(len(glyphColors))]
@@ -88,6 +115,7 @@ func New(count, fps int) *Simulation {
 		count:         count,
 		rng:           rng,
 		glyphs:        glyphs,
+		physics:       physics,
 		spring:        spring,
 		frameDuration: time.Second / time.Duration(fps),
 	}
@@ -100,9 +128,9 @@ func (s *Simulation) placeGlyphs() {
 		g.x = startX
 		g.y = 0
 		g.vx = 0
-		g.vy = -(s.rng.Float64() * 0.6) // small upward kick; gravity brings them down
+		g.vy = -(s.rng.Float64() * s.physics.LaunchKickMax)
 		g.targetX = startX
-		g.targetVX = (s.rng.Float64()*2 - 1) * 0.7
+		g.targetVX = (s.rng.Float64()*2 - 1) * s.physics.TargetDriftMax
 		g.stillFor = 0
 	}
 }
@@ -118,9 +146,9 @@ func (s *Simulation) spawnGlyph() {
 	g := &Glyph{
 		x:        x,
 		y:        0,
-		vy:       -(s.rng.Float64() * 1.0), // upward kick; gravity brings it down
+		vy:       -(s.rng.Float64() * s.physics.SpawnKickMax),
 		targetX:  x,
-		targetVX: (s.rng.Float64()*2 - 1) * 0.7,
+		targetVX: (s.rng.Float64()*2 - 1) * s.physics.TargetDriftMax,
 		char:     ch,
 		ansi:     lipgloss.NewStyle().Foreground(c).Render(string(ch)),
 	}
@@ -184,7 +212,7 @@ func (s *Simulation) update() {
 	for _, g := range s.glyphs {
 		// Y axis: direct Euler integration — no spring lag, bounces land exactly
 		// on the floor row.
-		g.vy += gravity
+		g.vy += s.physics.Gravity
 		g.y += g.vy
 
 		if g.y < 0 {
@@ -193,8 +221,8 @@ func (s *Simulation) update() {
 		}
 		if g.y >= floor {
 			g.y = floor
-			g.vy = -g.vy * restitution
-			g.targetVX *= xFloorFriction // bleed off horizontal wander on bounce
+			g.vy = -g.vy * s.physics.Restitution
+			g.targetVX *= s.physics.XFloorFriction // bleed off horizontal wander on bounce
 		}
 
 		// X axis: spring follower tracking a wandering target.
@@ -209,12 +237,12 @@ func (s *Simulation) update() {
 		g.x, g.vx = s.spring.Update(g.x, g.vx, g.targetX)
 
 		// Accumulate rest time; despawn after restTimeout seconds.
-		if math.Abs(g.vy) < restThreshold && g.y >= floor-0.5 {
+		if math.Abs(g.vy) < s.physics.RestThreshold && g.y >= floor-0.5 {
 			g.stillFor += dt
 		} else {
 			g.stillFor = 0
 		}
-		if g.stillFor < restTimeout {
+		if g.stillFor < s.physics.RestTimeoutSeconds {
 			surviving = append(surviving, g)
 		}
 	}
