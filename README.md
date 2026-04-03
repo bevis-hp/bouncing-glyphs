@@ -32,6 +32,26 @@ Usage of bouncing-glyphs:
     	number of glyphs to simulate (default 10)
   -fps int
     	frames per second (default 60)
+  -gravity float
+    	downward acceleration in cells/frame^2 (default 0.008)
+  -launch-kick-max float
+    	max upward launch speed for initial glyphs (default 0.6)
+  -rest-threshold float
+    	speed below which glyphs are considered resting (default 0.08)
+  -rest-timeout float
+    	seconds at rest before glyph despawns (default 5)
+  -restitution float
+    	bounce speed retention fraction (default 0.75)
+  -spawn-kick-max float
+    	max upward launch speed for spawned glyphs (default 1)
+  -spring-damping float
+    	x-axis spring damping ratio (default 0.55)
+  -spring-frequency float
+    	x-axis spring angular frequency (default 5)
+  -target-drift-max float
+    	max x-target drift speed magnitude (default 0.7)
+  -x-floor-friction float
+    	horizontal drift retention on floor bounce (default 0.96)
 ```
 <!-- END AUTO-CLI -->
 
