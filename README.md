@@ -2,6 +2,8 @@
 
 A terminal animation built with Go and Bubble Tea where colorful glyphs bounce under gravity, drift horizontally with spring-like motion, and eventually despawn after coming to rest.
 
+![Demo](demo/demo.gif)
+
 ## Features
 
 - Fixed-timestep terminal animation loop
@@ -14,6 +16,18 @@ A terminal animation built with Go and Bubble Tea where colorful glyphs bounce u
 
 - Go 1.26+
 - A terminal with ANSI color support
+
+## Install
+
+```bash
+go install github.com/bevis-hp/bouncing-glyphs@latest
+```
+
+Then run:
+
+```bash
+bouncing-glyphs
+```
 
 ## Run
 
@@ -61,6 +75,12 @@ Usage of bouncing-glyphs:
 - `q`, `esc`, or `ctrl+c`: quit
 
 ## Development
+
+Record the demo GIF (requires [vhs](https://github.com/charmbracelet/vhs)):
+
+```bash
+vhs demo/demo.tape
+```
 
 Build:
 
