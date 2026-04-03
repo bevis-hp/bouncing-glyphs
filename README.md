@@ -12,6 +12,7 @@ Terminal physics toy of bouncing glyphs built with Go and the brilliant TUI fram
 - Spring-following horizontal drift for smooth lateral motion
 - Random glyph characters and colours
 - Interactive controls to spawn more glyphs
+- NEW: Collision flag added 
 
 ## Requirements
 
