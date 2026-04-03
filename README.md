@@ -21,16 +21,19 @@ A terminal animation built with Go and Bubble Tea where colorful glyphs bounce u
 go run main.go
 ```
 
-## Flags
+## CLI Reference (Auto-generated)
 
-- `-count` (default `10`): initial number of glyphs
-- `-fps` (default `60`): simulation frame rate
+This section is refreshed by `scripts/update_readme.sh`.
 
-Example:
-
-```bash
-go run main.go -count 20 -fps 75
+<!-- BEGIN AUTO-CLI -->
+```text
+Usage of bouncing-glyphs:
+  -count int
+    	number of glyphs to simulate (default 10)
+  -fps int
+    	frames per second (default 60)
 ```
+<!-- END AUTO-CLI -->
 
 ## Controls
 
@@ -50,6 +53,18 @@ Test:
 ```bash
 go test ./...
 ```
+
+Install repo hooks once for this clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+What the pre-push hook does:
+
+- Regenerates the README CLI section from `go run . -h`
+- Stages `README.md` and blocks push if that section changed (commit, then push again)
+- Syncs GitHub description/topics from `.github/repo-metadata.env`
 
 ## License
 

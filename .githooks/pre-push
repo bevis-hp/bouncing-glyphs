@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+readme="$repo_root/README.md"
+
+before_hash=""
+if [[ -f "$readme" ]]; then
+  before_hash="$(git hash-object "$readme")"
+fi
+
+"$repo_root/scripts/update_readme.sh"
+
+after_hash=""
+if [[ -f "$readme" ]]; then
+  after_hash="$(git hash-object "$readme")"
+fi
+
+if [[ "$before_hash" != "$after_hash" ]]; then
+  git add README.md
+  echo "README.md was refreshed by pre-push hook and staged." >&2
+  echo "Commit the updated README.md, then push again." >&2
+  exit 1
+fi
+
+if ! "$repo_root/scripts/sync_repo_metadata.sh"; then
+  echo "Warning: GitHub metadata sync failed; push will continue." >&2
+fi
