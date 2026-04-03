@@ -77,18 +77,44 @@ type frameMsg time.Time
 // These are sampled once per glyph so every instance keeps a stable appearance.
 var glyphChars = []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{}|;:'\",.<>/?~£€¢¥§±×÷¶©®™✓✕★☆◆◇●○■□▲△✦✧✩✪✫✬✭✮✯✰✶✷")
 var glyphColors = []lipgloss.Color{
-	"#DC3C3C",
-	"#3CB44B",
-	"#FFE119",
-	"#0082C8",
-	"#F58330",
-	"#911EB4",
-	"#46F0F0",
-	"#F032E6",
-	"#D2F53C",
-	"#FABFD4",
-	"#AA6E28",
-	"#008080",
+	// Dracula
+	"#FF5555", // red
+	"#50FA7B", // green
+	"#F1FA8C", // yellow
+	"#BD93F9", // purple
+	"#FF79C6", // pink
+	"#8BE9FD", // cyan
+	"#FFB86C", // orange
+	"#F8F8F2", // foreground
+
+	// Nord
+	"#88C0D0", // frost cyan
+	"#81A1C1", // frost blue
+	"#5E81AC", // frost deep blue
+	"#A3BE8C", // aurora green
+	"#EBCB8B", // aurora yellow
+	"#D08770", // aurora orange
+	"#BF616A", // aurora red
+	"#B48EAD", // aurora purple
+
+	// Solarized
+	"#268BD2", // blue
+	"#2AA198", // cyan
+	"#859900", // green
+	"#B58900", // yellow
+	"#CB4B16", // orange
+	"#DC322F", // red
+	"#D33682", // magenta
+	"#6C71C4", // violet
+
+	// Monokai
+	"#F92672", // pink
+	"#A6E22E", // green
+	"#FD971F", // orange
+	"#66D9EF", // cyan
+	"#AE81FF", // purple
+	"#E6DB74", // yellow
+	"#F8F8F2", // foreground
 }
 
 // New creates a new Simulation. Width and height are determined from the
