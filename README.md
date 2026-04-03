@@ -1,6 +1,6 @@
 # Bouncing Glyphs
 
-Terminal physics toy of bouncing glyphs built with Go and Bubble Tea.
+Terminal physics toy of bouncing glyphs built with Go and the brilliant TUI framework from Charm - BubbleTea
 
 ![Demo](demo/demo.gif)
 
@@ -43,6 +43,8 @@ This section is refreshed by `scripts/update_readme.sh`.
 <!-- BEGIN AUTO-CLI -->
 ```text
 Usage of bouncing-glyphs:
+  -collision
+    	enable glyph-glyph collisions (higher CPU cost)
   -count int
     	number of glyphs to simulate (default 10)
   -fps int

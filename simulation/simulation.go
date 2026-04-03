@@ -17,6 +17,7 @@ type PhysicsConfig struct {
 	Gravity            float64 // cells/frame² downward acceleration
 	Restitution        float64 // fraction of speed retained on floor bounce
 	XFloorFriction     float64 // fraction of target x velocity retained on floor bounce
+	EnableCollision    bool    // enables glyph-glyph collisions (extra CPU work)
 	RestThreshold      float64 // cells/frame speed below which a glyph is considered at rest
 	RestTimeoutSeconds float64 // seconds at rest before despawn
 	SpringFrequency    float64 // spring angular frequency for x-axis follow behavior
@@ -32,6 +33,7 @@ func DefaultPhysicsConfig() PhysicsConfig {
 		Gravity:            0.008,
 		Restitution:        0.75,
 		XFloorFriction:     0.96,
+		EnableCollision:    false,
 		RestThreshold:      0.08,
 		RestTimeoutSeconds: 5.0,
 		SpringFrequency:    5.0,
@@ -246,7 +248,101 @@ func (s *Simulation) update() {
 			surviving = append(surviving, g)
 		}
 	}
+	if s.physics.EnableCollision && len(surviving) > 1 {
+		s.resolveCollisions(surviving, floor)
+	}
 	s.glyphs = surviving
+}
+
+func (s *Simulation) resolveCollisions(glyphs []*Glyph, floor float64) {
+	const minDistance = 1.0
+	const minDistanceSq = minDistance * minDistance
+	const collisionRestitutionScale = 0.25
+	const maxCollisionImpulse = 0.35
+	const minApproachSpeed = -0.001
+	const separationPercent = 0.5
+	const separationSlop = 0.05
+
+	type cell struct {
+		x int
+		y int
+	}
+
+	buckets := make(map[cell][]int, len(glyphs))
+	for i, g := range glyphs {
+		cx := int(math.Floor(g.x))
+		cy := int(math.Floor(g.y))
+
+		for dy := -1; dy <= 1; dy++ {
+			for dx := -1; dx <= 1; dx++ {
+				key := cell{x: cx + dx, y: cy + dy}
+				for _, j := range buckets[key] {
+					o := glyphs[j]
+					deltaX := g.x - o.x
+					deltaY := g.y - o.y
+					distSq := deltaX*deltaX + deltaY*deltaY
+					if distSq <= 0 || distSq >= minDistanceSq {
+						continue
+					}
+
+					dist := math.Sqrt(distSq)
+					nx := deltaX / dist
+					ny := deltaY / dist
+
+					relVx := g.vx - o.vx
+					relVy := g.vy - o.vy
+					velAlongNormal := relVx*nx + relVy*ny
+					if velAlongNormal < minApproachSpeed {
+						e := math.Min(1, math.Max(0, s.physics.Restitution*collisionRestitutionScale))
+						impulse := -(1 + e) * velAlongNormal / 2
+						if impulse > maxCollisionImpulse {
+							impulse = maxCollisionImpulse
+						}
+						ix := impulse * nx
+						iy := impulse * ny
+						g.vx += ix
+						g.vy += iy
+						o.vx -= ix
+						o.vy -= iy
+					}
+
+					separation := math.Max(minDistance-dist-separationSlop, 0) * separationPercent / 2
+					g.x += nx * separation
+					g.y += ny * separation
+					o.x -= nx * separation
+					o.y -= ny * separation
+
+					if g.x < 0 {
+						g.x = 0
+					}
+					if g.x > float64(s.width-1) {
+						g.x = float64(s.width - 1)
+					}
+					if o.x < 0 {
+						o.x = 0
+					}
+					if o.x > float64(s.width-1) {
+						o.x = float64(s.width - 1)
+					}
+
+					if g.y < 0 {
+						g.y = 0
+					}
+					if g.y > floor {
+						g.y = floor
+					}
+					if o.y < 0 {
+						o.y = 0
+					}
+					if o.y > floor {
+						o.y = floor
+					}
+				}
+			}
+		}
+
+		buckets[cell{x: cx, y: cy}] = append(buckets[cell{x: cx, y: cy}], i)
+	}
 }
 
 // placed is a glyph position resolved to integer grid coordinates.

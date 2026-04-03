@@ -21,6 +21,7 @@ func main() {
 	launchKickMax := flag.Float64("launch-kick-max", 0.6, "max upward launch speed for initial glyphs")
 	spawnKickMax := flag.Float64("spawn-kick-max", 1.0, "max upward launch speed for spawned glyphs")
 	targetDriftMax := flag.Float64("target-drift-max", 0.7, "max x-target drift speed magnitude")
+	collision := flag.Bool("collision", false, "enable glyph-glyph collisions (higher CPU cost)")
 	flag.Parse()
 
 	if *count < 1 {
@@ -83,6 +84,7 @@ func main() {
 		LaunchKickMax:      *launchKickMax,
 		SpawnKickMax:       *spawnKickMax,
 		TargetDriftMax:     *targetDriftMax,
+		EnableCollision:    *collision,
 	}
 
 	sim := simulation.NewWithPhysicsConfig(*count, *fps, physics)
