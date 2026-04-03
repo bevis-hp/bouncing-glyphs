@@ -1,6 +1,6 @@
 # Bouncing Glyphs
 
-A terminal animation built with Go and Bubble Tea where colorful glyphs bounce under gravity, drift horizontally with spring-like motion, and eventually despawn after coming to rest.
+Terminal glyph physics toy built with Go, Bubble Tea, and bouncing mechanics.
 
 ![Demo](demo/demo.gif)
 
