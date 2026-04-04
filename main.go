@@ -19,22 +19,35 @@ func stdinHasStream() bool {
 }
 
 func main() {
+	physics := simulation.PhysicsConfig{
+		Gravity:            0.008,
+		Restitution:        0.375,
+		XFloorFriction:     0.96,
+		RestThreshold:      0.08,
+		RestTimeoutSeconds: 5.0,
+		SpringFrequency:    5.0,
+		SpringDampingRatio: 0.55,
+		LaunchKickMax:      0.6,
+		SpawnKickMax:       1.0,
+		TargetDriftMax:     0.7,
+	}
+
 	count := flag.Int("count", 10, "number of glyphs to simulate")
 	fps := flag.Int("fps", 60, "frames per second")
 	stdinIntervalMS := flag.Int("stdin-interval-ms", 100, "milliseconds between glyph spawns from piped stdin")
 	stdinDropDelayMS := flag.Int("stdin-drop-delay-ms", 200, "milliseconds stdin glyphs wait at top before dropping")
-	gravity := flag.Float64("gravity", 0.008, "downward acceleration in cells/frame^2")
-	restitution := flag.Float64("restitution", 0.375, "bounce speed retention fraction")
-	xFloorFriction := flag.Float64("x-floor-friction", 0.96, "horizontal drift retention on floor bounce")
-	restThreshold := flag.Float64("rest-threshold", 0.08, "speed below which glyphs are considered resting")
-	restTimeout := flag.Float64("rest-timeout", 5.0, "seconds at rest before glyph despawns")
-	springFrequency := flag.Float64("spring-frequency", 5.0, "x-axis spring angular frequency")
-	springDamping := flag.Float64("spring-damping", 0.55, "x-axis spring damping ratio")
-	launchKickMax := flag.Float64("launch-kick-max", 0.6, "max upward launch speed for initial glyphs")
-	spawnKickMax := flag.Float64("spawn-kick-max", 1.0, "max upward launch speed for spawned glyphs")
-	targetDriftMax := flag.Float64("target-drift-max", 0.7, "max x-target drift speed magnitude")
-	despawn := flag.Bool("despawn", false, "despawn resting glyphs after rest-timeout")
-	collision := flag.Bool("collision", false, "enable glyph-glyph collisions (higher CPU cost)")
+	flag.Float64Var(&physics.Gravity, "gravity", physics.Gravity, "downward acceleration in cells/frame^2")
+	flag.Float64Var(&physics.Restitution, "restitution", physics.Restitution, "bounce speed retention fraction")
+	flag.Float64Var(&physics.XFloorFriction, "x-floor-friction", physics.XFloorFriction, "horizontal drift retention on floor bounce")
+	flag.Float64Var(&physics.RestThreshold, "rest-threshold", physics.RestThreshold, "speed below which glyphs are considered resting")
+	flag.Float64Var(&physics.RestTimeoutSeconds, "rest-timeout", physics.RestTimeoutSeconds, "seconds at rest before glyph despawns")
+	flag.Float64Var(&physics.SpringFrequency, "spring-frequency", physics.SpringFrequency, "x-axis spring angular frequency")
+	flag.Float64Var(&physics.SpringDampingRatio, "spring-damping", physics.SpringDampingRatio, "x-axis spring damping ratio")
+	flag.Float64Var(&physics.LaunchKickMax, "launch-kick-max", physics.LaunchKickMax, "max upward launch speed for initial glyphs")
+	flag.Float64Var(&physics.SpawnKickMax, "spawn-kick-max", physics.SpawnKickMax, "max upward launch speed for spawned glyphs")
+	flag.Float64Var(&physics.TargetDriftMax, "target-drift-max", physics.TargetDriftMax, "max x-target drift speed magnitude")
+	flag.BoolVar(&physics.EnableDespawn, "despawn", false, "despawn resting glyphs after rest-timeout")
+	flag.BoolVar(&physics.EnableCollision, "collision", false, "enable glyph-glyph collisions (higher CPU cost)")
 	flag.Parse()
 
 	hasStreamInput := stdinHasStream()
@@ -64,60 +77,45 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error: stdin-drop-delay-ms must be >= 0")
 		os.Exit(1)
 	}
-	if *gravity < 0 {
+	if physics.Gravity < 0 {
 		fmt.Fprintln(os.Stderr, "error: gravity must be >= 0")
 		os.Exit(1)
 	}
-	if *restitution < 0 {
+	if physics.Restitution < 0 {
 		fmt.Fprintln(os.Stderr, "error: restitution must be >= 0")
 		os.Exit(1)
 	}
-	if *xFloorFriction < 0 {
+	if physics.XFloorFriction < 0 {
 		fmt.Fprintln(os.Stderr, "error: x-floor-friction must be >= 0")
 		os.Exit(1)
 	}
-	if *restThreshold < 0 {
+	if physics.RestThreshold < 0 {
 		fmt.Fprintln(os.Stderr, "error: rest-threshold must be >= 0")
 		os.Exit(1)
 	}
-	if *restTimeout < 0 {
+	if physics.RestTimeoutSeconds < 0 {
 		fmt.Fprintln(os.Stderr, "error: rest-timeout must be >= 0")
 		os.Exit(1)
 	}
-	if *springFrequency < 0 {
+	if physics.SpringFrequency < 0 {
 		fmt.Fprintln(os.Stderr, "error: spring-frequency must be >= 0")
 		os.Exit(1)
 	}
-	if *springDamping < 0 {
+	if physics.SpringDampingRatio < 0 {
 		fmt.Fprintln(os.Stderr, "error: spring-damping must be >= 0")
 		os.Exit(1)
 	}
-	if *launchKickMax < 0 {
+	if physics.LaunchKickMax < 0 {
 		fmt.Fprintln(os.Stderr, "error: launch-kick-max must be >= 0")
 		os.Exit(1)
 	}
-	if *spawnKickMax < 0 {
+	if physics.SpawnKickMax < 0 {
 		fmt.Fprintln(os.Stderr, "error: spawn-kick-max must be >= 0")
 		os.Exit(1)
 	}
-	if *targetDriftMax < 0 {
+	if physics.TargetDriftMax < 0 {
 		fmt.Fprintln(os.Stderr, "error: target-drift-max must be >= 0")
 		os.Exit(1)
-	}
-
-	physics := simulation.PhysicsConfig{
-		Gravity:            *gravity,
-		Restitution:        *restitution,
-		XFloorFriction:     *xFloorFriction,
-		EnableDespawn:      *despawn,
-		RestThreshold:      *restThreshold,
-		RestTimeoutSeconds: *restTimeout,
-		SpringFrequency:    *springFrequency,
-		SpringDampingRatio: *springDamping,
-		LaunchKickMax:      *launchKickMax,
-		SpawnKickMax:       *spawnKickMax,
-		TargetDriftMax:     *targetDriftMax,
-		EnableCollision:    *collision,
 	}
 
 	sim := simulation.NewWithPhysicsConfig(*count, *fps, physics)
