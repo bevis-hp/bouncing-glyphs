@@ -1,6 +1,7 @@
 # glyphfall
 
-glyphfall is a terminal physics toy of bouncing glyphs built with Go and the brilliant TUI framework from Charm - BubbleTea
+A bouncy place to pipe to! Glyphfall is a terminal physics toy built with Go and the brilliant TUI framework from Charm - BubbleTea"
+
 
 ![Demo](demo/demo.gif)
 
