@@ -8,26 +8,10 @@ Set Framerate 30
 Set WindowBar Colorful
 Set Padding 10
 
-# Start the animation
-Type "glyphfall --count 12"
+# Show glyph intake from piped stdin
+Type "openssl rand -hex 32 | glyphfall"
 Enter
-Sleep 5s
-
-# Spawn more glyphs interactively
-Space
-Sleep 1200ms
-Space
-Sleep 1200ms
-Space
-Sleep 1000ms
-Space
-Sleep 1000ms
-Space
-Sleep 1000ms
-Space
-Sleep 1200ms
-Space
-Sleep 3s
+Sleep 17s
 
 # Quit
 Type "q"
