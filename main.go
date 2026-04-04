@@ -4,15 +4,27 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/bevis-hp/bouncing-glyphs/simulation"
 )
 
+func stdinHasStream() bool {
+	stdinInfo, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+
+	return stdinInfo.Mode()&os.ModeCharDevice == 0
+}
+
 func main() {
 	count := flag.Int("count", 10, "number of glyphs to simulate")
 	fps := flag.Int("fps", 60, "frames per second")
+	stdinIntervalMS := flag.Int("stdin-interval-ms", 100, "milliseconds between glyph spawns from piped stdin")
+	stdinDropDelayMS := flag.Int("stdin-drop-delay-ms", 200, "milliseconds stdin glyphs wait at top before dropping")
 	gravity := flag.Float64("gravity", 0.008, "downward acceleration in cells/frame^2")
-	restitution := flag.Float64("restitution", 0.75, "bounce speed retention fraction")
+	restitution := flag.Float64("restitution", 0.375, "bounce speed retention fraction")
 	xFloorFriction := flag.Float64("x-floor-friction", 0.96, "horizontal drift retention on floor bounce")
 	restThreshold := flag.Float64("rest-threshold", 0.08, "speed below which glyphs are considered resting")
 	restTimeout := flag.Float64("rest-timeout", 5.0, "seconds at rest before glyph despawns")
@@ -21,15 +33,35 @@ func main() {
 	launchKickMax := flag.Float64("launch-kick-max", 0.6, "max upward launch speed for initial glyphs")
 	spawnKickMax := flag.Float64("spawn-kick-max", 1.0, "max upward launch speed for spawned glyphs")
 	targetDriftMax := flag.Float64("target-drift-max", 0.7, "max x-target drift speed magnitude")
+	despawn := flag.Bool("despawn", false, "despawn resting glyphs after rest-timeout")
 	collision := flag.Bool("collision", false, "enable glyph-glyph collisions (higher CPU cost)")
 	flag.Parse()
 
-	if *count < 1 {
-		fmt.Fprintln(os.Stderr, "error: count must be at least 1")
+	hasStreamInput := stdinHasStream()
+	isCountSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "count" {
+			isCountSet = true
+		}
+	})
+	if hasStreamInput && !isCountSet {
+		*count = 0
+	}
+
+	if *count < 0 {
+		fmt.Fprintln(os.Stderr, "error: count must be at least 0")
 		os.Exit(1)
 	}
 	if *fps < 1 {
 		fmt.Fprintln(os.Stderr, "error: fps must be at least 1")
+		os.Exit(1)
+	}
+	if *stdinIntervalMS < 1 {
+		fmt.Fprintln(os.Stderr, "error: stdin-interval-ms must be at least 1")
+		os.Exit(1)
+	}
+	if *stdinDropDelayMS < 0 {
+		fmt.Fprintln(os.Stderr, "error: stdin-drop-delay-ms must be >= 0")
 		os.Exit(1)
 	}
 	if *gravity < 0 {
@@ -77,6 +109,7 @@ func main() {
 		Gravity:            *gravity,
 		Restitution:        *restitution,
 		XFloorFriction:     *xFloorFriction,
+		EnableDespawn:      *despawn,
 		RestThreshold:      *restThreshold,
 		RestTimeoutSeconds: *restTimeout,
 		SpringFrequency:    *springFrequency,
@@ -88,5 +121,12 @@ func main() {
 	}
 
 	sim := simulation.NewWithPhysicsConfig(*count, *fps, physics)
+	if hasStreamInput {
+		sim.EnableStream(
+			os.Stdin,
+			time.Duration(*stdinIntervalMS)*time.Millisecond,
+			time.Duration(*stdinDropDelayMS)*time.Millisecond,
+		)
+	}
 	sim.Run()
 }

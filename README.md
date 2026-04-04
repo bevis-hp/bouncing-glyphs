@@ -13,6 +13,7 @@ Terminal physics toy of bouncing glyphs built with Go and the brilliant TUI fram
 - Random glyph characters and colours
 - Interactive controls to spawn more glyphs
 - NEW: Collision flag added 
+- NEW: Streaming glyph intake from piped stdin
 
 ## Requirements
 
@@ -37,6 +38,12 @@ bouncing-glyphs
 go run main.go
 ```
 
+Pipe stdout from another command into the simulation and keep the shell command visible above the animation:
+
+```bash
+grep -o . README.md | go run main.go -count 0
+```
+
 ## CLI Reference (Auto-generated)
 
 This section is refreshed by `scripts/update_readme.sh`.
@@ -48,6 +55,8 @@ Usage of bouncing-glyphs:
     	enable glyph-glyph collisions (higher CPU cost)
   -count int
     	number of glyphs to simulate (default 10)
+  -despawn
+    	despawn resting glyphs after rest-timeout
   -fps int
     	frames per second (default 60)
   -gravity float
@@ -59,13 +68,17 @@ Usage of bouncing-glyphs:
   -rest-timeout float
     	seconds at rest before glyph despawns (default 5)
   -restitution float
-    	bounce speed retention fraction (default 0.75)
+	    	bounce speed retention fraction (default 0.375)
   -spawn-kick-max float
     	max upward launch speed for spawned glyphs (default 1)
   -spring-damping float
     	x-axis spring damping ratio (default 0.55)
   -spring-frequency float
     	x-axis spring angular frequency (default 5)
+  -stdin-interval-ms int
+    	milliseconds between glyph spawns from piped stdin (default 100)
+  -stdin-drop-delay-ms int
+    	milliseconds stdin glyphs wait at top before dropping (default 200)
   -target-drift-max float
     	max x-target drift speed magnitude (default 0.7)
   -x-floor-friction float
@@ -77,6 +90,8 @@ Usage of bouncing-glyphs:
 
 - `Space`: spawn a new glyph
 - `q`, `esc`, or `ctrl+c`: quit
+
+When stdin is piped in, Bubble Tea runs in the normal screen buffer instead of the alternate screen so the original shell command remains above the animation. Keyboard input is read from the controlling TTY, while piped stdin is buffered and released into the simulation one glyph at a time.
 
 ## Development
 

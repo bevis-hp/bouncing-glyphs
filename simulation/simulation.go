@@ -1,12 +1,15 @@
 package simulation
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -18,6 +21,7 @@ type PhysicsConfig struct {
 	Restitution        float64 // fraction of speed retained on floor bounce
 	XFloorFriction     float64 // fraction of target x velocity retained on floor bounce
 	EnableCollision    bool    // enables glyph-glyph collisions (extra CPU work)
+	EnableDespawn      bool    // enables resting glyph despawn after timeout
 	RestThreshold      float64 // cells/frame speed below which a glyph is considered at rest
 	RestTimeoutSeconds float64 // seconds at rest before despawn
 	SpringFrequency    float64 // spring angular frequency for x-axis follow behavior
@@ -31,11 +35,12 @@ type PhysicsConfig struct {
 func DefaultPhysicsConfig() PhysicsConfig {
 	return PhysicsConfig{
 		Gravity:            0.008,
-		Restitution:        0.75,
+		Restitution:        0.375,
 		XFloorFriction:     0.96,
 		EnableCollision:    false,
+		EnableDespawn:      false,
 		RestThreshold:      0.08,
-		RestTimeoutSeconds: 5.0,
+		RestTimeoutSeconds: 25.0,
 		SpringFrequency:    5.0,
 		SpringDampingRatio: 0.55,
 		LaunchKickMax:      0.6,
@@ -54,6 +59,7 @@ type Glyph struct {
 	yVel       float64 // physics velocity (y axis, cells/frame)
 	targetX    float64 // spring equilibrium point (x only)
 	targetXVel float64 // wandering velocity of the x target
+	holdFor    float64 // seconds to remain pinned before gravity applies
 	stillFor   float64 // seconds spent at rest (for despawn)
 	char       rune    // display character
 	ansi       string  // pre-computed colored cell string
@@ -65,14 +71,29 @@ type Simulation struct {
 	ready         bool
 	glyphs        []*Glyph
 	count         int
+	pendingChars  []rune
+	streamCursor  int
 	rng           *rand.Rand
 	physics       PhysicsConfig
 	spring        Spring
+	stream        StreamConfig
 	frameDuration time.Duration
 	spaces        string // s.width spaces, rebuilt on resize
 }
 
 type frameMsg time.Time
+type streamSpawnMsg time.Time
+
+type stdinGlyphMsg struct {
+	char rune
+}
+
+// StreamConfig controls stdin-driven glyph spawning.
+type StreamConfig struct {
+	Reader        io.Reader
+	SpawnInterval time.Duration
+	DropDelay     time.Duration
+}
 
 // These are sampled once per glyph so every instance keeps a stable appearance.
 var glyphChars = []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{}|;:'\",.<>/?~£€¢¥§±×÷¶©®™✓✕★☆◆◇●○■□▲△✦✧✩✪✫✬✭✮✯✰✶✷")
@@ -152,6 +173,26 @@ func NewWithPhysicsConfig(count, fps int, physics PhysicsConfig) *Simulation {
 	}
 }
 
+// EnableStream configures the simulation to read glyphs from a stream and
+// spawn them at a fixed interval.
+func (sim *Simulation) EnableStream(reader io.Reader, spawnInterval, dropDelay time.Duration) {
+	if reader == nil {
+		return
+	}
+	if spawnInterval <= 0 {
+		spawnInterval = 100 * time.Millisecond
+	}
+	if dropDelay < 0 {
+		dropDelay = 0
+	}
+
+	sim.stream = StreamConfig{
+		Reader:        reader,
+		SpawnInterval: spawnInterval,
+		DropDelay:     dropDelay,
+	}
+}
+
 // placeGlyphs launches all glyphs from the top of the screen.
 func (sim *Simulation) placeGlyphs() {
 	for _, glyph := range sim.glyphs {
@@ -170,18 +211,35 @@ func (sim *Simulation) placeGlyphs() {
 
 // spawnGlyph adds a new glyph at a random x position at the top of the screen.
 func (sim *Simulation) spawnGlyph() {
+	sim.spawnGlyphWithCharAtX(glyphChars[sim.rng.Intn(len(glyphChars))], sim.rng.Float64()*float64(sim.width-1))
+}
+
+func (sim *Simulation) spawnGlyphWithChar(char rune) {
+	sim.spawnGlyphWithCharAtX(char, sim.rng.Float64()*float64(sim.width-1))
+}
+
+func (sim *Simulation) spawnGlyphWithCharAtX(char rune, x float64) {
+	sim.spawnGlyphWithCharAtXAndDelay(char, x, 0)
+}
+
+func (sim *Simulation) spawnGlyphWithCharAtXAndDelay(char rune, x float64, holdDelay time.Duration) {
 	if sim.width < 1 {
 		return
 	}
 	color := glyphColors[sim.rng.Intn(len(glyphColors))]
-	char := glyphChars[sim.rng.Intn(len(glyphChars))]
-	x := sim.rng.Float64() * float64(sim.width-1)
+	if x < 0 {
+		x = 0
+	}
+	if x > float64(sim.width-1) {
+		x = float64(sim.width - 1)
+	}
 	glyph := &Glyph{
 		x:          x,
 		y:          0,
 		yVel:       -(sim.rng.Float64() * sim.physics.SpawnKickMax),
 		targetX:    x,
 		targetXVel: (sim.rng.Float64()*2 - 1) * sim.physics.TargetDriftMax,
+		holdFor:    holdDelay.Seconds(),
 		char:       char,
 		ansi:       lipgloss.NewStyle().Foreground(color).Render(string(char)),
 	}
@@ -195,9 +253,63 @@ func (sim *Simulation) animate() tea.Cmd {
 	})
 }
 
+func (sim *Simulation) streamSpawnTick() tea.Cmd {
+	if sim.stream.Reader == nil {
+		return nil
+	}
+
+	return tea.Tick(sim.stream.SpawnInterval, func(tickTime time.Time) tea.Msg {
+		return streamSpawnMsg(tickTime)
+	})
+}
+
+func (sim *Simulation) readStream(program *tea.Program) {
+	reader := bufio.NewReader(sim.stream.Reader)
+	for {
+		char, _, err := reader.ReadRune()
+		if err != nil {
+			return
+		}
+		if !shouldQueueStreamRune(char) {
+			continue
+		}
+
+		program.Send(stdinGlyphMsg{char: char})
+	}
+}
+
+func shouldQueueStreamRune(char rune) bool {
+	if char == '\n' || char == '\r' || char == '\t' || char == ' ' {
+		return true
+	}
+
+	return unicode.IsGraphic(char)
+}
+
+func (sim *Simulation) advanceStreamCursor(cells int) {
+	if sim.width < 1 || cells <= 0 {
+		return
+	}
+
+	sim.streamCursor += cells
+	if sim.streamCursor >= sim.width {
+		sim.streamCursor %= sim.width
+	}
+}
+
 // Run starts the Bubble Tea simulation.
 func (sim *Simulation) Run() {
-	program := tea.NewProgram(sim, tea.WithAltScreen())
+	programOptions := make([]tea.ProgramOption, 0, 1)
+	if sim.stream.Reader == nil {
+		programOptions = append(programOptions, tea.WithAltScreen())
+	} else {
+		programOptions = append(programOptions, tea.WithInputTTY())
+	}
+
+	program := tea.NewProgram(sim, programOptions...)
+	if sim.stream.Reader != nil {
+		go sim.readStream(program)
+	}
 	if _, err := program.Run(); err != nil {
 		fmt.Printf("error running simulation: %v\n", err)
 	}
@@ -205,6 +317,10 @@ func (sim *Simulation) Run() {
 
 // Init requests the first animation frame.
 func (sim *Simulation) Init() tea.Cmd {
+	if sim.stream.Reader != nil {
+		return tea.Batch(sim.animate(), sim.streamSpawnTick())
+	}
+
 	return sim.animate()
 }
 
@@ -218,6 +334,25 @@ func (sim *Simulation) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case " ":
 			sim.spawnGlyph()
 		}
+	case stdinGlyphMsg:
+		sim.pendingChars = append(sim.pendingChars, msg.char)
+	case streamSpawnMsg:
+		if sim.ready && len(sim.pendingChars) > 0 {
+			streamChar := sim.pendingChars[0]
+			switch streamChar {
+			case '\r', '\n':
+				sim.streamCursor = 0
+			case '\t':
+				sim.advanceStreamCursor(4)
+			case ' ':
+				sim.advanceStreamCursor(1)
+			default:
+				sim.spawnGlyphWithCharAtXAndDelay(streamChar, float64(sim.streamCursor), sim.stream.DropDelay)
+				sim.advanceStreamCursor(1)
+			}
+			sim.pendingChars = sim.pendingChars[1:]
+		}
+		return sim, sim.streamSpawnTick()
 	case tea.WindowSizeMsg:
 		if msg.Width > 0 {
 			sim.width = msg.Width
@@ -247,6 +382,16 @@ func (sim *Simulation) update() {
 
 	surviving := sim.glyphs[:0]
 	for _, glyph := range sim.glyphs {
+		if glyph.holdFor > 0 {
+			glyph.holdFor -= frameSeconds
+			if glyph.holdFor > 0 {
+				surviving = append(surviving, glyph)
+				continue
+			}
+			glyph.holdFor = 0
+			glyph.yVel = 0
+		}
+
 		// Y axis: direct Euler integration — no spring lag, bounces land exactly on the floor row.
 		glyph.yVel += sim.physics.Gravity
 		glyph.y += glyph.yVel
@@ -272,13 +417,18 @@ func (sim *Simulation) update() {
 		}
 		glyph.x, glyph.xVel = sim.spring.Update(glyph.x, glyph.xVel, glyph.targetX)
 
-		// Accumulate rest time; despawn after restTimeout seconds.
-		if math.Abs(glyph.yVel) < sim.physics.RestThreshold && glyph.y >= floor-0.5 {
-			glyph.stillFor += frameSeconds
+		if sim.physics.EnableDespawn {
+			// Accumulate rest time; despawn after restTimeout seconds.
+			if math.Abs(glyph.yVel) < sim.physics.RestThreshold && glyph.y >= floor-0.5 {
+				glyph.stillFor += frameSeconds
+			} else {
+				glyph.stillFor = 0
+			}
+			if glyph.stillFor < sim.physics.RestTimeoutSeconds {
+				surviving = append(surviving, glyph)
+			}
 		} else {
 			glyph.stillFor = 0
-		}
-		if glyph.stillFor < sim.physics.RestTimeoutSeconds {
 			surviving = append(surviving, glyph)
 		}
 	}
@@ -291,8 +441,8 @@ func (sim *Simulation) update() {
 func (sim *Simulation) resolveCollisions(glyphs []*Glyph, floor float64) {
 	const minDistance = 1.0
 	const minDistanceSq = minDistance * minDistance
-	const collisionRestitutionScale = 0.25
-	const maxCollisionImpulse = 0.35
+	const collisionRestitutionScale = 0.125
+	const maxCollisionImpulse = 0.025
 	const minApproachSpeed = -0.001
 	const separationPercent = 0.5
 	const separationSlop = 0.05
@@ -427,7 +577,10 @@ func (sim *Simulation) View() string {
 	for row := 0; row < sim.height; row++ {
 		if row == sim.height-1 {
 			// Footer row: fixed hint text, padded to full width.
-			const footer = "(Space: add glyph · q/esc/ctrl+c: quit)"
+			footer := "(Space: add glyph · q/esc/ctrl+c: quit)"
+			if sim.stream.Reader != nil {
+				footer = fmt.Sprintf("(stdin queued: %d · Space: add glyph · q/esc/ctrl+c: quit)", len(sim.pendingChars))
+			}
 			if len(footer) <= sim.width {
 				out.WriteString(footer)
 				out.WriteString(sim.spaces[:sim.width-len(footer)])
