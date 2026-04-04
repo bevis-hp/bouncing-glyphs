@@ -68,17 +68,17 @@ Usage of bouncing-glyphs:
   -rest-timeout float
     	seconds at rest before glyph despawns (default 5)
   -restitution float
-	    	bounce speed retention fraction (default 0.375)
+    	bounce speed retention fraction (default 0.375)
   -spawn-kick-max float
     	max upward launch speed for spawned glyphs (default 1)
   -spring-damping float
     	x-axis spring damping ratio (default 0.55)
   -spring-frequency float
     	x-axis spring angular frequency (default 5)
-  -stdin-interval-ms int
-    	milliseconds between glyph spawns from piped stdin (default 100)
   -stdin-drop-delay-ms int
     	milliseconds stdin glyphs wait at top before dropping (default 200)
+  -stdin-interval-ms int
+    	milliseconds between glyph spawns from piped stdin (default 100)
   -target-drift-max float
     	max x-target drift speed magnitude (default 0.7)
   -x-floor-friction float
