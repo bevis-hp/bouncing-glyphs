@@ -21,12 +21,12 @@ func stdinHasStream() bool {
 func main() {
 	physics := simulation.PhysicsConfig{
 		Gravity:            0.008,
-		Restitution:        0.375,
+		Restitution:        0.6,
 		XFloorFriction:     0.96,
 		RestThreshold:      0.08,
 		RestTimeoutSeconds: 5.0,
 		SpringFrequency:    5.0,
-		SpringDampingRatio: 0.55,
+		SpringDampingRatio: 0.5,
 		LaunchKickMax:      0.6,
 		SpawnKickMax:       1.0,
 		TargetDriftMax:     0.7,

@@ -69,11 +69,11 @@ Usage of glyphfall:
   -rest-timeout float
     	seconds at rest before glyph despawns (default 5)
   -restitution float
-    	bounce speed retention fraction (default 0.375)
+    	bounce speed retention fraction (default 0.6)
   -spawn-kick-max float
     	max upward launch speed for spawned glyphs (default 1)
   -spring-damping float
-    	x-axis spring damping ratio (default 0.55)
+    	x-axis spring damping ratio (default 0.5)
   -spring-frequency float
     	x-axis spring angular frequency (default 5)
   -stdin-drop-delay-ms int
