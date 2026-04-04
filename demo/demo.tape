@@ -9,7 +9,7 @@ Set WindowBar Colorful
 Set Padding 10
 
 # Start the animation
-Type "bouncing-glyphs --count 12"
+Type "glyphfall --count 12"
 Enter
 Sleep 5s
 

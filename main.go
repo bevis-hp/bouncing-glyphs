@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bevis-hp/bouncing-glyphs/simulation"
+	"github.com/bevis-hp/glyphfall/simulation"
 )
 
 func stdinHasStream() bool {

@@ -1,6 +1,6 @@
-# Bouncing Glyphs
+# glyphfall
 
-Terminal physics toy of bouncing glyphs built with Go and the brilliant TUI framework from Charm - BubbleTea
+glyphfall is a terminal physics toy of bouncing glyphs built with Go and the brilliant TUI framework from Charm - BubbleTea
 
 ![Demo](demo/demo.gif)
 
@@ -23,13 +23,13 @@ Terminal physics toy of bouncing glyphs built with Go and the brilliant TUI fram
 ## Install
 
 ```bash
-go install github.com/bevis-hp/bouncing-glyphs@latest
+go install github.com/bevis-hp/glyphfall@latest
 ```
 
 Then run:
 
 ```bash
-bouncing-glyphs
+glyphfall
 ```
 
 ## Run
@@ -50,7 +50,7 @@ This section is refreshed by `scripts/update_readme.sh`.
 
 <!-- BEGIN AUTO-CLI -->
 ```text
-Usage of bouncing-glyphs:
+Usage of glyphfall:
   -collision
     	enable glyph-glyph collisions (higher CPU cost)
   -count int

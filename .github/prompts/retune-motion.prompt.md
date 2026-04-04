@@ -1,5 +1,5 @@
 ---
-description: "Use when retuning ball motion, spring constants, or frame timing in the bouncing-glyphs simulation"
+description: "Use when retuning ball motion, spring constants, or frame timing in the glyphfall simulation"
 name: "Retune Motion"
 argument-hint: "Describe the motion goal, for example: make the balls feel heavier and less jittery"
 agent: "agent"

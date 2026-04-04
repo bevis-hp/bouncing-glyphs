@@ -1,6 +1,6 @@
 .DS_Store
 
 # Local build outputs
-/bouncing-glyphs
+/glyphfall
 *.test
 *.out

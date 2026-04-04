@@ -10,7 +10,7 @@ if [[ ! -f "$readme" ]]; then
 fi
 
 help_text="$(go run . -h 2>&1 || true)"
-help_text="$(printf '%s\n' "$help_text" | sed -E '1s|^Usage of .*:|Usage of bouncing-glyphs:|')"
+help_text="$(printf '%s\n' "$help_text" | sed -E '1s|^Usage of .*:|Usage of glyphfall:|')"
 
 block="$(cat <<EOF
 <!-- BEGIN AUTO-CLI -->

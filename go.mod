@@ -1,4 +1,4 @@
-module github.com/bevis-hp/bouncing-glyphs
+module github.com/bevis-hp/glyphfall
 
 go 1.26.1
 
